@@ -1,0 +1,80 @@
+version: "3.8"
+
+services:
+  # Servidor Node.js com TypeScript
+  chat-server:
+    build: ./node-server
+    container_name: chat-server
+    depends_on:
+      - pubsub-proxy
+    ports:
+      - "9000:9000"
+    volumes:
+      - server-data:/app/data
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - chat-network
+
+  # Proxy PubSub para mensagens e canais
+  pubsub-proxy:
+    build: ./pubsub-proxy
+    container_name: pubsub-proxy
+    ports:
+      - "5557:5557" # XSUB - publishers conectam aqui
+      - "5558:5558" # XPUB - subscribers conectam aqui
+    restart: unless-stopped
+    networks:
+      - chat-network
+
+  # Cliente Ruby para testes (Parte 1)
+  ruby-client:
+    build: ./ruby-client
+    container_name: ruby-client
+    depends_on:
+      - chat-server
+      - pubsub-proxy
+    stdin_open: true
+    tty: true
+    networks:
+      - chat-network
+    command: ["sh", "-c", "sleep 2 && ruby chat_client.rb chat-server 9000"]
+
+  # Cliente Ruby Interativo (Parte 2)
+  ruby-interactive-client:
+    build: ./ruby-client
+    container_name: ruby-interactive-client
+    depends_on:
+      - chat-server
+      - pubsub-proxy
+    stdin_open: true
+    tty: true
+    networks:
+      - chat-network
+    command:
+      [
+        "sh",
+        "-c",
+        "sleep 3 && ruby interactive_client.rb chat-server 9000 pubsub-proxy 5558",
+      ]
+
+  # Cliente Automático Python (Parte 2)
+  python-auto-client:
+    build: ./python-auto-client
+    depends_on:
+      - chat-server
+      - pubsub-proxy
+    networks:
+      - chat-network
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+volumes:
+  server-data:
+    driver: local
+
+networks:
+  chat-network:
+    driver: bridge
