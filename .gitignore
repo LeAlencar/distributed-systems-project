@@ -1,0 +1,33 @@
+# Node
+node_modules/
+dist/
+npm-debug.log
+*.log
+
+# Ruby
+.bundle/
+vendor/bundle/
+
+# Data
+*.json
+data/
+server_data.json
+
+# Docker
+.docker/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
