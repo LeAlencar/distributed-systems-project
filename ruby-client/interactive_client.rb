@@ -1,20 +1,29 @@
 #!/usr/bin/env ruby
 
 require "ffi-rzmq"
-require "json"
+require "msgpack"
 
 # Configuração
-SERVER_HOST = ARGV[0] || "chat-server"
-SERVER_PORT = ARGV[1]&.to_i || 9000
+BROKER_HOST = ARGV[0] || "req-rep-broker"
+BROKER_PORT = ARGV[1]&.to_i || 5555
 PUBSUB_HOST = ARGV[2] || "pubsub-proxy"
 PUBSUB_PORT = ARGV[3]&.to_i || 5558
+
+# Relógio lógico (Parte 4)
+$logical_clock = 0
+
+def increment_clock(received_clock = 0)
+  """Incrementa o relógio lógico seguindo as regras de Lamport"""
+  $logical_clock = [$logical_clock, received_clock].max + 1
+  $logical_clock
+end
 
 # Contexto ZMQ
 context = ZMQ::Context.new(1)
 
-# Socket Request-Reply para comandos
+# Socket Request-Reply para comandos (conecta ao broker)
 req_socket = context.socket(ZMQ::REQ)
-req_socket.connect("tcp://#{SERVER_HOST}:#{SERVER_PORT}")
+req_socket.connect("tcp://#{BROKER_HOST}:#{BROKER_PORT}")
 
 # Socket Subscriber para receber mensagens
 sub_socket = context.socket(ZMQ::SUB)
@@ -22,7 +31,7 @@ sub_socket.connect("tcp://#{PUBSUB_HOST}:#{PUBSUB_PORT}")
 
 puts "=" * 50
 puts "Cliente de Chat Interativo"
-puts "Servidor: #{SERVER_HOST}:#{SERVER_PORT}"
+puts "Broker: #{BROKER_HOST}:#{BROKER_PORT}"
 puts "PubSub: #{PUBSUB_HOST}:#{PUBSUB_PORT}"
 puts "=" * 50
 puts ""
@@ -33,13 +42,24 @@ subscribed_channels = []
 
 # Função auxiliar para enviar requisição
 def send_request(socket, service, data)
+  # Incrementar relógio antes de enviar
+  clock = increment_clock()
+  data["clock"] = clock
+  
   request = { "service" => service, "data" => data }
-  puts "\n[Enviando] #{service}"
-  socket.send_string(request.to_json)
+  puts "\n[Enviando] #{service} (clock: #{clock})"
+  packed_request = MessagePack.pack(request)
+  socket.send_string(packed_request)
   
   response = ""
   socket.recv_string(response)
-  parsed_response = JSON.parse(response)
+  parsed_response = MessagePack.unpack(response)
+  
+  # Atualizar relógio ao receber resposta
+  if parsed_response["data"] && parsed_response["data"]["clock"]
+    increment_clock(parsed_response["data"]["clock"])
+  end
+  
   parsed_response
 end
 
@@ -48,36 +68,44 @@ subscriber_thread = Thread.new do
   loop do
     begin
       topic = ""
-      message = ""
       
-      # Receber tópico e mensagem
-      if sub_socket.recv_string(topic, ZMQ::DONTWAIT) == 0
-        if sub_socket.recv_string(message) == 0
-          data = JSON.parse(message)
-          
-          puts "\n" + "=" * 50
-          if data["src"]
-            # Mensagem direta
-            puts "📨 Nova mensagem de #{data['src']}:"
-            puts "   #{data['message']}"
-          elsif data["user"]
-            # Publicação em canal
-            puts "📢 [#{topic}] #{data['user']}:"
-            puts "   #{data['message']}"
+      # Receber tópico (primeira parte)
+      rc = sub_socket.recv_string(topic, ZMQ::DONTWAIT)
+      if rc >= 0
+        # Verificar se há mais partes (segunda parte com a mensagem)
+        if sub_socket.more_parts?
+          message = ""
+          if sub_socket.recv_string(message) >= 0
+            begin
+              data = MessagePack.unpack(message)
+              
+              puts "\n" + "=" * 50
+              if data["src"]
+                # Mensagem direta
+                puts "📨 Nova mensagem de #{data['src']}:"
+                puts "   #{data['message']}"
+              elsif data["user"]
+                # Publicação em canal
+                puts "📢 [#{topic}] #{data['user']}:"
+                puts "   #{data['message']}"
+              end
+              puts "=" * 50
+              print "\nEscolha uma opção: "
+            rescue => e
+              # Ignorar erros de parse MessagePack
+            end
           end
-          puts "=" * 50
-          print "\nEscolha uma opção: "
         end
       end
       
       sleep(0.1)
     rescue => e
       # Ignorar erros de EAGAIN (não há mensagens)
-      if e.message.include?("EAGAIN")
-        sleep(0.1)
-      else
-        puts "Erro no subscriber: #{e.message}"
+      unless e.message.include?("EAGAIN") || e.to_s.include?("EAGAIN")
+        # Log de erros inesperados
+        STDERR.puts "Erro no subscriber: #{e.message}"
       end
+      sleep(0.1)
     end
   end
 end

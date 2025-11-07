@@ -16,6 +16,7 @@ export interface LoginRequest {
   data: {
     user: string;
     timestamp: number;
+    clock: number;
   };
 }
 
@@ -24,6 +25,7 @@ export interface LoginResponse {
   data: {
     status: "sucesso" | "erro";
     timestamp: number;
+    clock: number;
     description?: string;
   };
 }
@@ -33,6 +35,7 @@ export interface UsersRequest {
   service: "users";
   data: {
     timestamp: number;
+    clock: number;
   };
 }
 
@@ -40,6 +43,7 @@ export interface UsersResponse {
   service: "users";
   data: {
     timestamp: number;
+    clock: number;
     users: string[];
   };
 }
@@ -50,6 +54,7 @@ export interface ChannelRequest {
   data: {
     channel: string;
     timestamp: number;
+    clock: number;
   };
 }
 
@@ -58,6 +63,7 @@ export interface ChannelResponse {
   data: {
     status: "sucesso" | "erro";
     timestamp: number;
+    clock: number;
     description?: string;
   };
 }
@@ -67,6 +73,7 @@ export interface ChannelsRequest {
   service: "channels";
   data: {
     timestamp: number;
+    clock: number;
   };
 }
 
@@ -74,6 +81,7 @@ export interface ChannelsResponse {
   service: "channels";
   data: {
     timestamp: number;
+    clock: number;
     channels: string[];
   };
 }
@@ -86,6 +94,7 @@ export interface PublishRequest {
     channel: string;
     message: string;
     timestamp: number;
+    clock: number;
   };
 }
 
@@ -95,6 +104,7 @@ export interface PublishResponse {
     status: "OK" | "erro";
     message?: string;
     timestamp: number;
+    clock: number;
   };
 }
 
@@ -106,6 +116,7 @@ export interface MessageRequest {
     dst: string;
     message: string;
     timestamp: number;
+    clock: number;
   };
 }
 
@@ -115,6 +126,7 @@ export interface MessageResponse {
     status: "OK" | "erro";
     message?: string;
     timestamp: number;
+    clock: number;
   };
 }
 
@@ -150,4 +162,133 @@ export interface ServerData {
   publications: PublicationData[];
   messages: DirectMessageData[];
   last_updated: number;
+}
+
+// Parte 4: Novos serviços para sincronização
+
+// Rank service
+export interface RankRequest {
+  service: "rank";
+  data: {
+    user: string;
+    timestamp: number;
+    clock: number;
+  };
+}
+
+export interface RankResponse {
+  service: "rank";
+  data: {
+    rank: number;
+    timestamp: number;
+    clock: number;
+  };
+}
+
+// List service
+export interface ServerInfo {
+  name: string;
+  rank: number;
+}
+
+export interface ListRequest {
+  service: "list";
+  data: {
+    timestamp: number;
+    clock: number;
+  };
+}
+
+export interface ListResponse {
+  service: "list";
+  data: {
+    list: ServerInfo[];
+    timestamp: number;
+    clock: number;
+  };
+}
+
+// Heartbeat service
+export interface HeartbeatRequest {
+  service: "heartbeat";
+  data: {
+    user: string;
+    timestamp: number;
+    clock: number;
+  };
+}
+
+export interface HeartbeatResponse {
+  service: "heartbeat";
+  data: {
+    timestamp: number;
+    clock: number;
+  };
+}
+
+// Clock service (Berkeley Algorithm)
+export interface ClockRequest {
+  service: "clock";
+  data: {
+    timestamp: number;
+    clock: number;
+  };
+}
+
+export interface ClockResponse {
+  service: "clock";
+  data: {
+    time: number;
+    timestamp: number;
+    clock: number;
+  };
+}
+
+// Election service
+export interface ElectionRequest {
+  service: "election";
+  data: {
+    timestamp: number;
+    clock: number;
+  };
+}
+
+export interface ElectionResponse {
+  service: "election";
+  data: {
+    election: "OK";
+    timestamp: number;
+    clock: number;
+  };
+}
+
+// Coordinator announcement (PubSub on "servers" topic)
+export interface CoordinatorAnnouncement {
+  service: "election";
+  data: {
+    coordinator: string;
+    timestamp: number;
+    clock: number;
+  };
+}
+
+// Replication service (Parte 5)
+export interface ReplicationRequest {
+  service: "replicate";
+  data: {
+    operation: "channel" | "publish" | "message";
+    payload: any;
+    timestamp: number;
+    clock: number;
+    source_server: string;
+  };
+}
+
+export interface ReplicationResponse {
+  service: "replicate";
+  data: {
+    status: "OK" | "erro";
+    timestamp: number;
+    clock: number;
+  };
 }

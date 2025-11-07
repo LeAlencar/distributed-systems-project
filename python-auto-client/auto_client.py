@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
 import zmq
-import json
+import msgpack
 import time
 import random
 import string
 import sys
 
 # Configuração
-SERVER_HOST = sys.argv[1] if len(sys.argv) > 1 else "chat-server"
-SERVER_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 9000
+BROKER_HOST = sys.argv[1] if len(sys.argv) > 1 else "req-rep-broker"
+BROKER_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 5555
+
+# Relógio lógico (Parte 4)
+logical_clock = 0
 
 # Mensagens aleatórias para enviar
 SAMPLE_MESSAGES = [
@@ -33,28 +36,46 @@ def generate_random_username():
     return f"{prefix}_{suffix}"
 
 
+def increment_clock(received_clock=0):
+    """Incrementa o relógio lógico seguindo as regras de Lamport"""
+    global logical_clock
+    logical_clock = max(logical_clock, received_clock) + 1
+    return logical_clock
+
+
 def send_request(socket, service, data):
     """Envia uma requisição e retorna a resposta"""
+    # Incrementar relógio antes de enviar
+    clock = increment_clock()
+    data['clock'] = clock
+
     request = {
         "service": service,
         "data": data
     }
 
-    socket.send_string(json.dumps(request))
-    response = socket.recv_string()
-    return json.loads(response)
+    packed_request = msgpack.packb(request, use_bin_type=True)
+    socket.send(packed_request)
+    response = socket.recv()
+    response_data = msgpack.unpackb(response, raw=False)
+
+    # Atualizar relógio ao receber resposta
+    if 'data' in response_data and 'clock' in response_data['data']:
+        increment_clock(response_data['data']['clock'])
+
+    return response_data
 
 
 def main():
     print("=" * 50)
     print("Cliente Automático Python")
-    print(f"Servidor: {SERVER_HOST}:{SERVER_PORT}")
+    print(f"Broker: {BROKER_HOST}:{BROKER_PORT}")
     print("=" * 50)
 
     # Criar contexto e socket
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
-    socket.connect(f"tcp://{SERVER_HOST}:{SERVER_PORT}")
+    socket.connect(f"tcp://{BROKER_HOST}:{BROKER_PORT}")
 
     # Gerar nome de usuário aleatório
     username = generate_random_username()
@@ -107,35 +128,26 @@ def main():
             channel = random.choice(channels)
             print(f"\n🎯 Canal escolhido: {channel}")
 
-            # 3. Enviar 10 mensagens para o canal
-            print(f"\n📨 Enviando 10 mensagens para '{channel}'...")
+            # 3. Enviar 1 mensagem para o canal
+            message = random.choice(SAMPLE_MESSAGES)
+            print(f"\n📨 Enviando mensagem para '{channel}'...")
 
-            for i in range(10):
-                message = random.choice(SAMPLE_MESSAGES)
+            response = send_request(socket, "publish", {
+                "user": username,
+                "channel": channel,
+                "message": message,
+                "timestamp": int(time.time())
+            })
 
-                response = send_request(socket, "publish", {
-                    "user": username,
-                    "channel": channel,
-                    "message": f"[{i+1}/10] {message}",
-                    "timestamp": int(time.time())
-                })
+            if response["data"]["status"] == "OK":
+                print(f"  ✓ Mensagem enviada: {message}")
+            else:
+                print(
+                    f"  ✗ Erro ao enviar mensagem: {response['data'].get('message', 'Unknown error')}")
 
-                if response["data"]["status"] == "OK":
-                    print(f"  ✓ Mensagem {i+1}/10 enviada")
-                else:
-                    print(
-                        f"  ✗ Erro na mensagem {i+1}/10: {response['data'].get('message', 'Unknown error')}")
-
-                # Pequeno delay entre mensagens
-                time.sleep(0.5)
-
-            print(f"\n✅ 10 mensagens enviadas para '{channel}'")
-
-            # Aguardar antes da próxima iteração
-            wait_time = random.randint(3, 8)
-            print(
-                f"\n⏳ Aguardando {wait_time} segundos antes da próxima iteração...")
-            time.sleep(wait_time)
+            # Aguardar 60 segundos antes da próxima mensagem
+            print(f"\n⏳ Aguardando 60 segundos antes da próxima mensagem...")
+            time.sleep(60)
 
             iteration += 1
 

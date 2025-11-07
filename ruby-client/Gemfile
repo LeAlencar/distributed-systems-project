@@ -3,3 +3,4 @@ source "https://rubygems.org"
 ruby "~> 3.3.0"
 
 gem "ffi-rzmq", "~> 2.0"
+gem "msgpack", "~> 1.7"

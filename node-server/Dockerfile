@@ -1,10 +1,11 @@
 FROM node:20-slim
 
-# Instalar dependências do sistema para ZeroMQ
+# Instalar dependências do sistema para ZeroMQ e SQLite CLI
 RUN apt-get update && apt-get install -y \
     build-essential \
     libzmq3-dev \
     python3 \
+    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Criar diretório de trabalho

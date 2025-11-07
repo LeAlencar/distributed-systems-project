@@ -1,18 +1,23 @@
 version: "3.8"
 
 services:
-  # Servidor Node.js com TypeScript
-  chat-server:
-    build: ./node-server
-    container_name: chat-server
-    depends_on:
-      - pubsub-proxy
+  # Servidor de Referência (Parte 4)
+  reference-server:
+    build: ./reference-server
+    container_name: reference-server
     ports:
-      - "9000:9000"
-    volumes:
-      - server-data:/app/data
-    environment:
-      - NODE_ENV=production
+      - "5559:5559" # REP - servidores conectam para rank/list/heartbeat
+    restart: unless-stopped
+    networks:
+      - chat-network
+
+  # Broker Request-Reply para load balancing
+  req-rep-broker:
+    build: ./req-rep-broker
+    container_name: req-rep-broker
+    ports:
+      - "5555:5555" # ROUTER - clientes conectam aqui
+      - "5556:5556" # DEALER - servidores conectam aqui
     restart: unless-stopped
     networks:
       - chat-network
@@ -28,26 +33,30 @@ services:
     networks:
       - chat-network
 
-  # Cliente Ruby para testes (Parte 1)
+  # Servidor Node.js com TypeScript
+  chat-server:
+    build: ./node-server
+    depends_on:
+      - reference-server
+      - req-rep-broker
+      - pubsub-proxy
+    # Sem volume compartilhado - cada réplica tem seu próprio banco SQLite
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - chat-network
+    deploy:
+      replicas: 3
+
+  # Cliente Ruby Interativo (Request-Reply + PubSub)
   ruby-client:
     build: ./ruby-client
     container_name: ruby-client
     depends_on:
-      - chat-server
+      - req-rep-broker
       - pubsub-proxy
-    stdin_open: true
-    tty: true
-    networks:
-      - chat-network
-    command: ["sh", "-c", "sleep 2 && ruby chat_client.rb chat-server 9000"]
-
-  # Cliente Ruby Interativo (Parte 2)
-  ruby-interactive-client:
-    build: ./ruby-client
-    container_name: ruby-interactive-client
-    depends_on:
       - chat-server
-      - pubsub-proxy
     stdin_open: true
     tty: true
     networks:
@@ -56,24 +65,21 @@ services:
       [
         "sh",
         "-c",
-        "sleep 3 && ruby interactive_client.rb chat-server 9000 pubsub-proxy 5558",
+        "sleep 3 && ruby interactive_client.rb req-rep-broker 5555 pubsub-proxy 5558",
       ]
 
   # Cliente Automático Python (Parte 2)
   python-auto-client:
     build: ./python-auto-client
     depends_on:
-      - chat-server
+      - req-rep-broker
       - pubsub-proxy
+      - chat-server
     networks:
       - chat-network
     restart: unless-stopped
     deploy:
       replicas: 2
-
-volumes:
-  server-data:
-    driver: local
 
 networks:
   chat-network:

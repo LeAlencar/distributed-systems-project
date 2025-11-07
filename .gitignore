@@ -12,6 +12,8 @@ vendor/bundle/
 *.json
 data/
 server_data.json
+*.db
+*.db-*
 
 # Docker
 .docker/
